@@ -58,10 +58,12 @@ def get_cache() -> StudentCache:
     return StudentCache(make_redis_client())
 
 
-# ── 异常映射：StudentError → 404，注册一次全局生效 ───────────
+# ── 异常映射：StudentError → 按异常自带的 status_code 返回 ───
+# 例如 StudentNotFoundError=404、EmptyGradeError=422。
+# 以前这里写死 404，导致"成绩不能为空"也被报成"学生不存在"。
 @app.exception_handler(StudentError)
 async def student_error_handler(request: Request, exc: StudentError):
-    return JSONResponse(status_code=404, content={"detail": str(exc)})
+    return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
 
 
 # ── 路由 ──────────────────────────────────────────────────────

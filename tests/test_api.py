@@ -3,6 +3,8 @@
 所以这些测试不碰开发库 student_db，跑完不留痕。
 """
 
+from api import app, get_cache
+
 
 def test_root(client):
     r = client.get("/")
@@ -101,3 +103,51 @@ def test_get_returns_cache_on_second_request(client):
     assert second.json() == first.json()
     # 缓存里确有该 key，证明第二次是从缓存返回、没有再打 DB
     assert client.app.state.test_cache.get(sid) is not None
+
+
+# ── 降级：Redis 不可用时接口仍然可用 ─────────────────────────
+def test_get_student_survives_when_redis_is_down(client, broken_cache):
+    """缓存连不上 → 降级查库，返回 200，而不是 500。
+
+    对应真实故障：Redis 服务停掉后，详情接口不该跟着挂。
+    """
+    app.dependency_overrides[get_cache] = lambda: broken_cache
+
+    r = client.post("/students", json={"name": "降级验证", "age": 20, "grade": "A"})
+    assert r.status_code == 201
+    sid = r.json()["id"]
+
+    got = client.get(f"/students/{sid}")
+    assert got.status_code == 200
+    assert got.json()["name"] == "降级验证"
+
+
+def test_delete_survives_when_redis_is_down(client, broken_cache):
+    """缓存删不掉也不该让 DELETE 失败（旧值还有 TTL 兜底）"""
+    app.dependency_overrides[get_cache] = lambda: broken_cache
+
+    r = client.post("/students", json={"name": "降级删除", "age": 21, "grade": "B"})
+    sid = r.json()["id"]
+
+    assert client.delete(f"/students/{sid}").status_code == 204
+
+
+# ── 异常状态码语义 ────────────────────────────────────────────
+def test_blank_grade_returns_422_not_404(client):
+    """空白成绩是"输入不合法"→ 422，不是"学生不存在"→ 404。
+
+    "   " 能绕过 Pydantic 的 min_length=1，落到 service 层才被拦下。
+    """
+    r = client.post("/students", json={"name": "张八", "age": 22, "grade": "A"})
+    sid = r.json()["id"]
+
+    r = client.patch(f"/students/{sid}/grade", json={"new_grade": "   "})
+    assert r.status_code == 422
+    assert "成绩" in r.json()["detail"]
+
+
+def test_not_found_still_returns_404(client):
+    """确认改完异常映射后，"找不到"仍然是 404，没被误伤"""
+    assert client.get("/students/99999999").status_code == 404
+    assert client.patch("/students/99999999/grade",
+                        json={"new_grade": "B"}).status_code == 404
