@@ -1,4 +1,5 @@
 import pytest
+import redis
 from sqlalchemy import create_engine,delete
 from sqlalchemy.orm import Session
 
@@ -92,6 +93,28 @@ def service(fake_repo):
 from fastapi.testclient import TestClient
 from api import app, get_service, get_cache
 from cache import StudentCache, make_fake_client
+
+
+class BrokenRedisClient:
+    """模拟 Redis 完全不可用：任何操作都抛连接错误。
+
+    用来验证"缓存是加速手段，不是依赖"——Redis 挂了接口也该活着。
+    """
+
+    def get(self, key):
+        raise redis.ConnectionError("redis is down")
+
+    def set(self, *args, **kwargs):
+        raise redis.ConnectionError("redis is down")
+
+    def delete(self, *args, **kwargs):
+        raise redis.ConnectionError("redis is down")
+
+
+@pytest.fixture
+def broken_cache():
+    """一个永远连不上的缓存，用于验证降级路径"""
+    return StudentCache(BrokenRedisClient())
 
 @pytest.fixture
 def client():
