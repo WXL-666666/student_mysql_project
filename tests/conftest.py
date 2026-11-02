@@ -90,20 +90,30 @@ def service(fake_repo):
 
 # ── FastAPI 测试：TestClient + dependency_overrides ─────────
 from fastapi.testclient import TestClient
-from api import app, get_service
+from api import app, get_service, get_cache
+from cache import StudentCache, make_fake_client
 
 @pytest.fixture
 def client():
-    """API 测试：override get_service 走测试库 + savepoint 回滚，跑完不留痕"""
+    """API 测试：override get_service 走测试库 + savepoint 回滚，跑完不留痕。
+    同时把 get_cache override 成 fakeredis，所以 API 测试不需要真实 Redis 服务器。"""
     connection = test_engine.connect()
     transaction = connection.begin()
     session = Session(bind=connection, join_transaction_mode="create_savepoint")
 
+    fake_cache = StudentCache(make_fake_client())   # 测试用 fakeredis，无需服务器
+
     def override_get_service():
         return StudentService(StudentRepository(session))
 
+    def override_get_cache():
+        return fake_cache
+
     app.dependency_overrides[get_service] = override_get_service
-    yield TestClient(app)
+    app.dependency_overrides[get_cache] = override_get_cache
+    c = TestClient(app)
+    c.app.state.test_cache = fake_cache   # 暴露给测试，方便断言缓存内部状态
+    yield c
     app.dependency_overrides.clear()
     session.close()
     transaction.rollback()

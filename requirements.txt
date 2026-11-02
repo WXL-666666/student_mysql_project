@@ -6,3 +6,7 @@ alembic
 fastapi
 uvicorn[standard]
 httpx
+factory-boy
+redis
+fakeredis
+pytest-cov

@@ -7,3 +7,6 @@ __pycache__/
 .workbuddy/
 crud_old.py
 crud_v2.py
+.coverage
+.coverage.*
+htmlcov/

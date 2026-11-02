@@ -7,6 +7,7 @@ from db import engine
 from service import StudentService
 from repository import StudentRepository
 from exceptions import StudentError
+from cache import StudentCache, make_redis_client
 
 app = FastAPI()
 
@@ -51,6 +52,12 @@ def get_service(session: Session = Depends(get_session)) -> StudentService:
     return StudentService(StudentRepository(session))
 
 
+# ── 依赖注入：每次请求准备一个 cache ───────────────────────
+def get_cache() -> StudentCache:
+    # 运行时连真实 Memurai；测试里会被 override 成 fakeredis（见 conftest）
+    return StudentCache(make_redis_client())
+
+
 # ── 异常映射：StudentError → 404，注册一次全局生效 ───────────
 @app.exception_handler(StudentError)
 async def student_error_handler(request: Request, exc: StudentError):
@@ -76,20 +83,33 @@ def create_student(payload: StudentCreate,
 
 @app.get("/students/{student_id}", response_model=StudentOut)
 def get_student(student_id: int,
-                service: StudentService = Depends(get_service)):
-    return service.get(student_id)
+                service: StudentService = Depends(get_service),
+                cache: StudentCache = Depends(get_cache)):
+    hit = cache.get(student_id)
+    if hit is not None:
+        return hit                          # 命中缓存，直接返回，不打 DB
+    student = service.get(student_id)        # 未命中 → 查 DB
+    data = {"id": student.id, "name": student.name,
+            "age": student.age, "grade": student.grade}
+    cache.set(data, ttl=60)                 # 回填缓存
+    return data
 
 
 @app.delete("/students/{student_id}", status_code=204)
 def delete_student(student_id: int,
-                   service: StudentService = Depends(get_service)):
+                   service: StudentService = Depends(get_service),
+                   cache: StudentCache = Depends(get_cache)):
     service.remove(student_id)
+    cache.delete(student_id)                 # 让缓存失效，避免脏数据
 
 
 @app.patch("/students/{student_id}/grade", response_model=StudentOut)
 def change_grade(student_id: int, body: GradeUpdate,
-                 service: StudentService = Depends(get_service)):
-    return service.change_grade(student_id, body.new_grade)
+                 service: StudentService = Depends(get_service),
+                 cache: StudentCache = Depends(get_cache)):
+    result = service.change_grade(student_id, body.new_grade)
+    cache.delete(student_id)                 # 成绩变了，让缓存失效
+    return result
 
 
 if __name__ == "__main__":

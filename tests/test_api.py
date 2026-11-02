@@ -60,3 +60,44 @@ def test_delete_then_not_found(client):
     d = client.delete(f"/students/{sid}")
     assert d.status_code == 204
     assert client.get(f"/students/{sid}").status_code == 404
+
+
+def test_get_populates_cache(client):
+    # cache-aside：第一次 GET 未命中 → 查库并回填；之后缓存里应有该 key
+    r = client.post("/students", json={"name": "缓存测试", "age": 20, "grade": "A"})
+    assert r.status_code == 201
+    sid = r.json()["id"]
+
+    got = client.get(f"/students/{sid}")
+    assert got.status_code == 200
+    assert got.json()["name"] == "缓存测试"
+
+    # 第一次 GET 后，fakeredis 缓存里应已有 student:{sid}（无需真实服务器）
+    assert client.app.state.test_cache.get(sid) is not None
+
+
+def test_delete_invalidates_cache(client):
+    r = client.post("/students", json={"name": "失效测试", "age": 21, "grade": "C"})
+    sid = r.json()["id"]
+    client.get(f"/students/{sid}")                       # 触达 → 回填缓存
+    assert client.app.state.test_cache.get(sid) is not None
+
+    client.delete(f"/students/{sid}")                    # 删除 → 让缓存失效
+    assert client.app.state.test_cache.get(sid) is None  # 缓存已被删
+
+
+def test_get_returns_cache_on_second_request(client):
+    # 第一次 GET：未命中 → 查库并回填缓存
+    r = client.post("/students", json={"name": "缓存命中", "age": 25, "grade": "A"})
+    assert r.status_code == 201
+    sid = r.json()["id"]
+
+    first = client.get(f"/students/{sid}")
+    assert first.status_code == 200
+
+    # 第二次 GET：缓存命中，直接返回（覆盖 api.py 的 `return hit` 分支）
+    second = client.get(f"/students/{sid}")
+    assert second.status_code == 200
+    assert second.json() == first.json()
+    # 缓存里确有该 key，证明第二次是从缓存返回、没有再打 DB
+    assert client.app.state.test_cache.get(sid) is not None
