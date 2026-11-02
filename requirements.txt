@@ -10,3 +10,6 @@ factory-boy
 redis
 fakeredis
 pytest-cov
+# MySQL 8.4 默认认证插件是 caching_sha2_password，
+# PyMySQL 走"完整认证"（首次连接 / 服务器重启后缓存清空）时需要它
+cryptography
