@@ -7,6 +7,13 @@ __pycache__/
 .workbuddy/
 crud_old.py
 crud_v2.py
+# 覆盖率与测试报告
 .coverage
 .coverage.*
 htmlcov/
+# M5：pytest-html 报告
+reports/
+# M6：ruff 缓存
+.ruff_cache/
+# M5-3：Allure 数据
+allure-results/
