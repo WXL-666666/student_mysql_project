@@ -29,6 +29,9 @@ class StudentService:
     def list_all(self) -> list[Student]:
         return self.repo.list_all()
 
+    def list_page(self,limit:int,offset:int) -> tuple[list[Student],int]:
+        return self.repo.list_all(limit=limit,offset=offset),self.repo.count_all()
+
     def change_grade(self, student_id: int, new_grade: str) -> Student:
         if not new_grade or not new_grade.strip():
             raise EmptyGradeError()

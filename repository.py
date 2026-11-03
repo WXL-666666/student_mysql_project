@@ -1,9 +1,8 @@
-from sqlalchemy import select
+from sqlalchemy import select,func
 from sqlalchemy.orm import Session
 
 from exceptions import StudentNotFoundError
 from models import Student
-
 
 class StudentRepository:
     #"""只管数据存取。不认识任何业务规则——给它什么就存什么"""
@@ -22,8 +21,16 @@ class StudentRepository:
             raise StudentNotFoundError(student_id)
         return student
 
-    def list_all(self) -> list[Student]:
-        return list(self.session.execute(select(Student)).scalars().all())
+    def list_all(self,limit:int | None = None,offset:int | None = None) -> list[Student]:
+        stmt = select(Student).order_by(Student.id).offset(offset)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        return list(self.session.execute(stmt).scalars().all())
+
+    def count_all(self) ->int:
+        return self.session.execute(
+            select(func.count()).select_from(Student)
+        ).scalar()
 
     def update_grade(self, student_id: int, new_grade: str) -> Student:
         student = self.get(student_id)

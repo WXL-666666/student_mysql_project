@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Depends, Request, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy.orm import Session
@@ -73,8 +73,13 @@ def root():
 
 
 @app.get("/students", response_model=list[StudentOut])
-def list_students(service: StudentService = Depends(get_service)):
-    return service.list_all()
+def list_students(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    service: StudentService = Depends(get_service),
+):
+    students, _total = service.list_page(limit, offset)
+    return students
 
 
 @app.post("/students", response_model=StudentOut, status_code=201)
