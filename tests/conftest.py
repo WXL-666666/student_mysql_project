@@ -91,7 +91,7 @@ def service(fake_repo):
 
 # ── FastAPI 测试：TestClient + dependency_overrides ─────────
 from fastapi.testclient import TestClient
-from api import app, get_service, get_cache
+from api import app, get_service, get_cache, get_bundle, ServiceBundle
 from cache import StudentCache, make_fake_client
 
 
@@ -129,13 +129,21 @@ def client():
     def override_get_service():
         return StudentService(StudentRepository(session))
 
+    def override_get_bundle():
+        return ServiceBundle(
+            service=StudentService(StudentRepository(session)),
+            session=session,
+        )
+
     def override_get_cache():
         return fake_cache
 
     app.dependency_overrides[get_service] = override_get_service
+    app.dependency_overrides[get_bundle] = override_get_bundle
     app.dependency_overrides[get_cache] = override_get_cache
     c = TestClient(app)
     c.app.state.test_cache = fake_cache   # 暴露给测试，方便断言缓存内部状态
+    c.app.state.test_session = session    # 暴露给测试，M2-3 的 commit 失败测试用
     yield c
     app.dependency_overrides.clear()
     session.close()

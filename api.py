@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, Request, Query
+from fastapi import FastAPI, Depends, Request,Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy.orm import Session
@@ -9,6 +9,7 @@ from repository import StudentRepository
 from exceptions import StudentError
 from cache import StudentCache, make_redis_client
 
+from dataclasses import dataclass 
 app = FastAPI()
 
 
@@ -32,15 +33,20 @@ class GradeUpdate(BaseModel):
     new_grade: str = Field(min_length=1, max_length=10)
 
 
-# ── 依赖注入：每次请求准备一个 service ───────────────────────
+@dataclass
+class ServiceBundle:
+    """一次请求的全套依赖：service 负责业务，session 负责在响应前提交"""
+    service: StudentService
+    session: Session
+
+
 def get_session() -> Session:
-    # ⚠️ 关键：必须手动 commit / rollback。
-    # 若用 `with Session(engine) as session: yield session`，
-    # 请求结束时 session.close() 会丢弃所有未 commit 的写入 → POST 数据丢失。
+    # ⚠️ 这里只负责 session 的「出生」和「善后」，不再负责提交。
+    # 提交（commit）已经挪到写路由内部、return 之前——这样数据一定
+    # 在响应发出之前落库，而不是"先回 201、再默默提交"。
     session = Session(engine)
     try:
         yield session
-        session.commit()                 # 请求正常结束 → 提交
     except Exception:
         session.rollback()               # 任何异常（含 StudentError）→ 回滚
         raise                            # 异常继续往上抛，交给 exception_handler
@@ -48,7 +54,16 @@ def get_session() -> Session:
         session.close()
 
 
+def get_bundle(session: Session = Depends(get_session)) -> ServiceBundle:
+    """把 service 和 session 打包给写路由，路由需要同时用两者"""
+    return ServiceBundle(
+        service=StudentService(StudentRepository(session)),
+        session=session,
+    )
+
+
 def get_service(session: Session = Depends(get_session)) -> StudentService:
+    """只读路由用：它们不需要手动 commit"""
     return StudentService(StudentRepository(session))
 
 
@@ -74,18 +89,21 @@ def root():
 
 @app.get("/students", response_model=list[StudentOut])
 def list_students(
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    limit:int = Query(default=20,ge=1,le=100),
+    offset:int = Query(default=0,ge=0),
     service: StudentService = Depends(get_service),
-):
-    students, _total = service.list_page(limit, offset)
+    ):
+    students,_total = service.list_page(limit,offset)
     return students
+    
 
 
 @app.post("/students", response_model=StudentOut, status_code=201)
 def create_student(payload: StudentCreate,
-                   service: StudentService = Depends(get_service)):
-    return service.register(payload.name, payload.age, payload.grade)
+                   bundle: ServiceBundle = Depends(get_bundle)):
+    student = bundle.service.register(payload.name, payload.age, payload.grade)
+    bundle.session.commit()
+    return student
 
 
 @app.get("/students/{student_id}", response_model=StudentOut)
@@ -104,18 +122,20 @@ def get_student(student_id: int,
 
 @app.delete("/students/{student_id}", status_code=204)
 def delete_student(student_id: int,
-                   service: StudentService = Depends(get_service),
+                   bundle: ServiceBundle = Depends(get_bundle),
                    cache: StudentCache = Depends(get_cache)):
-    service.remove(student_id)
-    cache.delete(student_id)                 # 让缓存失效，避免脏数据
+    bundle.service.remove(student_id)
+    cache.delete(student_id)             # 让缓存失效，避免脏数据
+    bundle.session.commit()              # ← 先提交，再返回 204
 
 
 @app.patch("/students/{student_id}/grade", response_model=StudentOut)
 def change_grade(student_id: int, body: GradeUpdate,
-                 service: StudentService = Depends(get_service),
+                 bundle: ServiceBundle = Depends(get_bundle),
                  cache: StudentCache = Depends(get_cache)):
-    result = service.change_grade(student_id, body.new_grade)
+    result = bundle.service.change_grade(student_id, body.new_grade)
     cache.delete(student_id)                 # 成绩变了，让缓存失效
+    bundle.session.commit()                  # ← 先提交，再返回
     return result
 
 

@@ -4,7 +4,7 @@
 """
 
 from api import app, get_cache
-
+import pytest
 
 def test_root(client):
     r = client.get("/")
@@ -151,3 +151,30 @@ def test_not_found_still_returns_404(client):
     assert client.get("/students/99999999").status_code == 404
     assert client.patch("/students/99999999/grade",
                         json={"new_grade": "B"}).status_code == 404
+
+def test_commit_failed_returns_500_not_201(client):
+    """commit 失败时，客户端绝不能拿到「假装成功的 201」。
+
+    验证的是 M2-3 修的时序问题：commit 被移到了路由内、return 之前。
+    如果哪天有人把 bundle.session.commit() 删掉（commit 又回到响应之后），
+    这条测试会立刻变红——因为 commit 根本不会被调用，异常也不会被抛出来。
+
+    注意：用 pytest.raises 而不是 assert r.status_code >= 500。
+    原因是 TestClient 默认 raise_server_exceptions=True——未处理的
+    RuntimeError 会「穿透」成测试异常，而不是转成 500 响应。
+    （真服务器才会返回 500；TestClient 把异常重新抛出来。）
+    """
+
+    session = client.app.state.test_session
+    original_commit = session.commit
+
+    # 让这次请求的 commit 抛异常，模拟"提交时数据库出问题"（死锁/连接断开等）
+    def boom():
+        raise RuntimeError("commit 炸了")
+
+    session.commit = boom
+    try:
+        with pytest.raises(RuntimeError, match="commit 炸了"):
+            client.post("/students", json={"name": "时序", "age": 20, "grade": "A"})
+    finally:
+        session.commit = original_commit
