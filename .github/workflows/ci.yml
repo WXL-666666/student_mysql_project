@@ -32,10 +32,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          # 与本地 .venv 的基底版本保持一致（本地是 3.14.10）
+          python-version: "3.14"
       - name: 装依赖
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          # 用 lock 而不是 txt：lock 是精确版本，txt 只有区间。
+          # 用 txt 的话 CI 可能装到比本地更新的依赖 → 出现"本地绿、CI 红"。
+          pip install -r requirements.lock
       - name: 跑全部测试
         run: pytest -v
