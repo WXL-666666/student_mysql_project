@@ -36,13 +36,15 @@
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.lock
 
-# 2. 准备配置（复制模板后改成自己的数据库密码）
+# 2. 准备配置（复制模板后【必须】改 DB_PASSWORD）
 Copy-Item .env.example .env
 notepad .env
+#    把 DB_PASSWORD=改成你的密码 换成你本机 MySQL 的真实密码（只能用数字/字母/符号）
 
 # 3. 创建数据库（两个：开发库 + 测试库）
-#    前提：mysql 客户端在 PATH 里。若不在（如 Windows 便携版解压安装），
-#    把下面的 mysql 换成完整路径，例如：
+#    ⚠️ 下面的 mysql 命令需要 mysql 客户端在 PATH 里。
+#    如果你的 MySQL 是免安装版（解压即用），mysql 不在 PATH，命令会报
+#    「无法将"mysql"项识别为 cmdlet...」，把命令换成完整路径即可，例如：
 #    & "D:\DevTools\MySQL-8.4.13\bin\mysql.exe" -u root -p -e "CREATE DATABASE ..."
 mysql -u root -p -e "CREATE DATABASE student_db CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"
 mysql -u root -p -e "CREATE DATABASE student_db_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"
@@ -52,7 +54,7 @@ mysql -u root -p -e "CREATE DATABASE student_db_test CHARACTER SET utf8mb4 COLLA
 
 # 5. 跑测试
 .\.venv\Scripts\python.exe -m pytest -q
-# 预期：52 passed
+# 预期：59 passed
 
 # 6. 启动服务
 .\.venv\Scripts\python.exe api.py
@@ -63,10 +65,10 @@ mysql -u root -p -e "CREATE DATABASE student_db_test CHARACTER SET utf8mb4 COLLA
 
 ## 测试体系
 
-**52 个用例 / 行覆盖率 99%（branch 模式，220 条可执行语句）**
+**59 个用例 / 行覆盖率 99%（branch 模式，231 条可执行语句）**
 
 ```
-TOTAL   220   2   99%
+TOTAL   231   2   99%
 ```
 
 剩下未覆盖的 2 行是 `api.py` 的 `__main__` 入口守卫，合理不测。
@@ -153,6 +155,29 @@ api.py → service.py → repository.py → models.py
 - **缓存降级是实例级的**：若将来把缓存客户端改为全局单例复用，`_degraded` 标记会退化成永久熔断，需要换成带冷却时间的熔断器
 - **无速率限制**，无请求级日志与链路追踪
 - 单实例部署，未考虑多副本下的一致性
+
+## 常见问题
+
+**`UnicodeEncodeError: 'latin-1' codec can't encode characters in position 0-5`**
+
+`.env` 里的 `DB_PASSWORD` 还是占位符 `改成你的密码`，或者你填了中文密码。PyMySQL 建连接时会用 latin1 编码密码，非 ASCII 字符必然失败。改成真实密码，且只用数字/字母/常见符号。
+
+**`mysql : 无法将"mysql"项识别为 cmdlet、函数、脚本文件或可运行程序的名称`**
+
+mysql 客户端不在 PATH（免安装版常见）。用完整路径调用，见「快速开始」第 3 步的说明。
+
+**`(1050, "Table 'students' already exists")`**
+
+目标库里已有一张结构不符的旧表。删掉后重跑迁移：
+
+```powershell
+& "D:\DevTools\MySQL-8.4.13\bin\mysql.exe" -u root -p -e "DROP TABLE student_db.students"
+.\.venv\Scripts\alembic.exe upgrade head
+```
+
+**`Unknown database 'student_db_test'`**
+
+测试库没建。回到「快速开始」第 3 步，那里要建**两个**库。
 
 ## 常用命令
 
