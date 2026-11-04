@@ -1,6 +1,10 @@
 import pytest
 import redis
-from sqlalchemy import create_engine,delete
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config as AlembicConfig
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from config import DB_CONFIG
@@ -18,13 +22,31 @@ TEST_URL = (
 
 test_engine = create_engine(TEST_URL,echo=False)
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
 @pytest.fixture(scope="session",autouse=True)
 def prepare_database():
-    # 在 conftest.py 的 prepare_database 里临时加一行，跑一次，然后删掉
-    Base.metadata.create_all(test_engine)
-    with Session(test_engine) as session:
-        session.execute(delete(Student))
-        session.commit()
+    """测试库的表由 Alembic 迁移建，而不是 Base.metadata.create_all。
+
+    为什么：create_all 只读模型、从不读迁移。迁移写错了测试照样全绿，
+    等到上线才发现建不出表——"迁移烂了没人知道"。
+    改成 upgrade head 之后，跑一次 pytest 就等于验证一次迁移。
+
+    顺带一个坑：只删 students 表不够，还必须删 alembic_version 表。
+    否则 alembic 看版本号"已经是最新"，会认为无事可做，一张表都不建。
+    """
+    # 1) 把测试库清成"什么都没有"：业务表 + alembic 的版本表
+    Base.metadata.drop_all(test_engine)
+    with test_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+
+    # 2) 用迁移从零建表（alembic_version 由 alembic 自己写）
+    cfg = AlembicConfig(str(PROJECT_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(PROJECT_ROOT / "alembic"))
+    cfg.attributes["db_url"] = TEST_URL      # env.py 的 get_url() 优先读这个
+    command.upgrade(cfg, "head")
+
     yield
 
 @pytest.fixture

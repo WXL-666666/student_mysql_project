@@ -8,7 +8,25 @@ from config import DB_CONFIG
 from models import Base  # ← 关键 1：把模型的元数据引过来，autogenerate 靠它比对
 
 def get_url():
-    """从 config 读连接串，避免在 alembic.ini 里硬编码密码"""
+    """从 config 读连接串，避免在 alembic.ini 里硬编码密码。
+
+    支持三种来源，优先级从高到低：
+    1. 代码里注入的 `config.attributes["db_url"]`（测试用，conftest 走这条）
+    2. 命令行 `alembic -x db_url=... upgrade head`
+    3. 默认：.env 里的开发库（日常迁移用这条）
+
+    这样同一套迁移既能建开发库、也能建测试库——**"迁移是唯一真相"**。
+    """
+    # 1) 程序内注入（pytest fixture 在内存里传参，不用拼字符串到命令行）
+    if "db_url" in config.attributes:
+        return config.attributes["db_url"]
+
+    # 2) 命令行 -x 参数
+    x_args = context.get_x_argument(as_dictionary=True)
+    if "db_url" in x_args:
+        return x_args["db_url"]
+
+    # 3) 默认：开发库
     return (
         f"mysql+pymysql://{DB_CONFIG['user']}:{DB_CONFIG['password']}"
         f"@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
