@@ -26,7 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 @pytest.fixture(scope="session",autouse=True)
-def prepare_database(request):
+def prepare_database():
     """测试库的表由 Alembic 迁移建，而不是 Base.metadata.create_all。
 
     为什么：create_all 只读模型、从不读迁移。迁移写错了测试照样全绿，
@@ -35,19 +35,7 @@ def prepare_database(request):
 
     顺带一个坑：只删 students 表不够，还必须删 alembic_version 表。
     否则 alembic 看版本号"已经是最新"，会认为无事可做，一张表都不建。
-
-    M3-1 补充：本 fixture 是 autouse，**不受 -m 筛选影响**——哪怕跑
-    `pytest -m unit`，它也会执行、照样去连 MySQL。所以这里自己判断一次：
-    「被选中的用例里有没有 integration 标记的」，没有就跳过建库。
-    比解析 -m 字符串可靠（`-m "unit or integration"`、`-k` 组合都能覆盖）。
     """
-    needs_db = any(
-        item.get_closest_marker("integration") for item in request.session.items
-    )
-    if not needs_db:
-        yield                       # 只跑 unit：零依赖，不碰 MySQL
-        return
-
     # 1) 把测试库清成"什么都没有"：业务表 + alembic 的版本表
     Base.metadata.drop_all(test_engine)
     with test_engine.begin() as conn:

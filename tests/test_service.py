@@ -2,9 +2,6 @@ import pytest
 from models import Student
 from exceptions import InvalidAgeError, StudentNotFoundError, EmptyGradeError   
 
-# 分类依据是"运行依赖"：本文件用 FakeStudentRepository，零外部依赖
-pytestmark = pytest.mark.unit
-
 # ---------- 业务规则测试：全程没有数据库 ----------
 
 @pytest.mark.parametrize("bad_age", [-1, -5, 151, 999])

@@ -6,10 +6,6 @@
 from api import app, get_cache
 import pytest
 
-# TestClient 在进程内跑，但连的是真测试库 → integration（不是 e2e）
-pytestmark = pytest.mark.integration
-
-
 def test_root(client):
     r = client.get("/")
     assert r.status_code == 200

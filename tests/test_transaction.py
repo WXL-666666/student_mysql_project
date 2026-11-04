@@ -4,9 +4,6 @@ from sqlalchemy.exc import IntegrityError
 
 from models import Student
 
-# 真 MySQL：验证事务与 savepoint 行为 → integration
-pytestmark = pytest.mark.integration
-
 
 def count_students(session) -> int:
     return session.execute(select(func.count()).select_from(Student)).scalar()

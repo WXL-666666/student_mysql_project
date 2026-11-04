@@ -1,10 +1,5 @@
 """分页：先写测试，再实现。这一步的测试应该先红后绿。"""
 
-import pytest
-
-# client fixture 连真测试库 → integration
-pytestmark = pytest.mark.integration
-
 
 def test_list_returns_default_page_size(client):
     """默认只返回 20 条，不是全表"""
