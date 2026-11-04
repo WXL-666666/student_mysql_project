@@ -1,6 +1,11 @@
 import time
 
+import pytest
+
 from cache import REDIS_CONFIG, StudentCache, make_fake_client
+
+# fakeredis 在内存里，不需要真实 Redis 服务 → unit
+pytestmark = pytest.mark.unit
 
 
 def test_miss_then_set_then_hit():
@@ -15,6 +20,7 @@ def test_miss_then_set_then_hit():
     assert cache.get(1) == {"id": 1, "name": "张三", "age": 18, "grade": "A"}
 
 
+@pytest.mark.slow          # 真等了 1.1 秒 → 单独标记，日常可 -m "unit and not slow" 跳过
 def test_ttl_expiry():
     cache = StudentCache(make_fake_client())
     cache.set({"id": 2, "name": "李四", "age": 20, "grade": "B"}, ttl=1)

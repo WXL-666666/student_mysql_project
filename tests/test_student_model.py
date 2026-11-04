@@ -1,6 +1,10 @@
+import pytest
 from sqlalchemy import select
 from factories import StudentFactory
 from models import Student
+
+# 真 MySQL：db_session 直接建连接 → integration
+pytestmark = pytest.mark.integration
 
 
 def test_insert_and_read(db_session):

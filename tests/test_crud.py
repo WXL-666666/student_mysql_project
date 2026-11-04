@@ -2,6 +2,9 @@ import pytest
 from models import Student
 from exceptions import StudentNotFoundError
 
+# 真 MySQL：走 db_session fixture → integration
+pytestmark = pytest.mark.integration
+
 
 # ---------- Create ----------
 

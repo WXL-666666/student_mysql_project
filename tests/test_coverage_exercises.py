@@ -20,6 +20,10 @@ from service import StudentService
 from api import get_session, get_service, get_cache
 from cache import StudentCache
 
+# 已实测：get_session() 只构造 Session（惰性），commit 无改动时不连库，
+# get_service/get_cache 也是惰性构造 → 全程零外部依赖，归 unit
+pytestmark = pytest.mark.unit
+
 
 # ── 练习 1：service.py:24 batch_register 成功路径 ─────────────
 def test_batch_register_succeeds(service):
@@ -48,13 +52,13 @@ def test_get_cache_returns_cache():
 
 
 # ── 练习 3（进阶）：直测 get_session 生成器 ──────────────────
-def test_get_session_happy_path_commits():
-    """请求正常结束 → commit + close —— 覆盖 api.py:40,42,43,48。"""
+def test_get_session_happy_path_closes():
+    """请求正常结束 → close（M2-3 之后这里不再 commit）—— 覆盖 api.py:40,42,43,48。"""
     gen = get_session()
     session = next(gen)            # 进入 yield（40 → 42）
     assert isinstance(session, Session)
     try:
-        next(gen)                  # 请求正常结束 → commit(43) + finally close(48)
+        next(gen)                  # 请求正常结束 → finally close(48)
     except StopIteration:
         pass
 
