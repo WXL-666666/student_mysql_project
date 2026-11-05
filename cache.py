@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 # 和 config.py 同款风格：os.getenv 带默认值，没配也能跑
 REDIS_CONFIG = {
-    "host": os.getenv("REDIS_HOST", "localhost"),
+    "host": os.getenv("REDIS_HOST", "127.0.0.1"),
     "port": int(os.getenv("REDIS_PORT", "6379")),
     "db": int(os.getenv("REDIS_DB", "0")),
     "decode_responses": True,  # get 直接返回 str（不是 bytes），json.loads 更顺手

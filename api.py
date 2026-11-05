@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from fastapi import FastAPI, Depends, Request,Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ConfigDict
@@ -68,9 +70,20 @@ def get_service(session: Session = Depends(get_session)) -> StudentService:
 
 
 # ── 依赖注入：每次请求准备一个 cache ───────────────────────
-def get_cache() -> StudentCache:
-    # 运行时连真实 Memurai；测试里会被 override 成 fakeredis（见 conftest）
+@lru_cache(maxsize=1)
+def _shared_cache() -> StudentCache:
+    """整个进程共用一份 Redis 客户端。
+
+    以前每次请求都 `StudentCache(make_redis_client())`：每建一个客户端就要
+    重新走一次 TCP 连接（Windows 上 localhost 还会先试 IPv6 再回退，约 1 秒），
+    而且旧客户端从不关闭。连接池本来就是为了复用——复用的前提是别每次都新建。
+    """
     return StudentCache(make_redis_client())
+
+
+def get_cache() -> StudentCache:
+    # 测试里会用 dependency_overrides 换成 fakeredis（见 tests/conftest.py）
+    return _shared_cache()
 
 
 # ── 异常映射：StudentError → 按异常自带的 status_code 返回 ───
