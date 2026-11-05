@@ -19,15 +19,19 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
-def wait_until_ready(base_url: str, timeout: float = 20.0) -> None:
+def wait_until_ready(base_url: str, proc: subprocess.Popen, timeout: float = 20.0) -> None:
     """轮询 GET /，直到返回 200。
 
-    ⚠️ 两个反面写法：
+    ⚠️ 三个反面写法：
     - time.sleep(3)：机器慢就 flaky，机器快就白等
     - socket.connect 判就绪：端口能连上只说明"有人监听"，不代表应用能处理请求
+    - 只等 HTTP 不看子进程：app 名写错时进程秒退，却要白等满 20 秒
     """
     deadline = time.time() + timeout
     while time.time() < deadline:
+        if proc.poll() is not None:
+            # 子进程已经退出（典型原因：模块名/变量名写错），别等了，交给上层去打日志
+            raise RuntimeError("服务进程启动后立即退出")
         try:
             if httpx.get(base_url + "/", timeout=0.5).status_code == 200:
                 return
@@ -52,7 +56,7 @@ def live_server():
         text=True,                    # 否则读到的是 bytes，打印出来全是转义
     )
     try:
-        wait_until_ready(base_url)
+        wait_until_ready(base_url, proc)
         yield base_url
     except Exception:
         # 起不来时把子进程的原始输出带出来，否则只会看到"没就绪"，等 20 秒毫无线索
