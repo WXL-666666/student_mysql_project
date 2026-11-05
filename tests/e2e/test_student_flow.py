@@ -9,7 +9,7 @@ def test_full_crud_flow(api):
     assert created.status_code == 201
     sid = created.json()["id"]
 
-    # 查
+    # 查（真实 HTTP GET，会走 Redis 缓存）
     got = api.get(f"/students/{sid}")
     assert got.status_code == 200
     assert got.json()["name"] == "e2e学生"
