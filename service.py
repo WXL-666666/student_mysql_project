@@ -15,12 +15,14 @@ class StudentService:
     def register(self, name: str, age: int, grade: str) -> Student:
         """注册学生"""
         self._validate_age(age)
+        self._validate_grade(grade)      # 创建时也要校验，否则空格成绩能进库
         return self.repo.add(name, age, grade)
 
     def batch_register(self, rows: list[tuple[str, int, str]]) -> list[Student]:
         # 先全部校验，再全部写入——避免"存了一半才发现第三个不合法"
         for name, age, grade in rows:
             self._validate_age(age)
+            self._validate_grade(grade)
         return self.repo.batch_add(rows)
 
     def get(self, student_id: int) -> Student:
@@ -33,12 +35,21 @@ class StudentService:
         return self.repo.list_all(limit=limit,offset=offset),self.repo.count_all()
 
     def change_grade(self, student_id: int, new_grade: str) -> Student:
-        if not new_grade or not new_grade.strip():
-            raise EmptyGradeError()
+        self._validate_grade(new_grade)
         return self.repo.update_grade(student_id, new_grade)
 
     def remove(self, student_id: int) -> None:
         self.repo.delete(student_id)
+
+    @staticmethod
+    def _validate_grade(grade: str) -> None:
+        """成绩不能为空或全空白。
+
+        创建和改分必须用同一条规则——否则会出现"创建时能塞空格、改分时被拒"
+        这种前后不一致，脏数据就进来了。
+        """
+        if not grade or not grade.strip():
+            raise EmptyGradeError()
 
     @staticmethod
     def _validate_age(age: int) -> None:

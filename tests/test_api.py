@@ -5,7 +5,7 @@
 
 from api import app, get_cache
 import pytest
-
+pytestmark = pytest.mark.integration
 def test_root(client):
     r = client.get("/")
     assert r.status_code == 200
@@ -88,6 +88,21 @@ def test_delete_invalidates_cache(client):
     assert client.app.state.test_cache.get(sid) is None  # 缓存已被删
 
 
+def test_patch_invalidates_cache(client):
+    """回归用例：PATCH 改分后必须删缓存，否则 60 秒内都读到旧值"""
+    r = client.post("/students", json={"name": "改分失效", "age": 21, "grade": "B"})
+    sid = r.json()["id"]
+
+    assert client.get(f"/students/{sid}").json()["grade"] == "B"   # 触达 → 回填缓存
+    assert client.app.state.test_cache.get(sid) is not None
+
+    client.patch(f"/students/{sid}/grade", json={"new_grade": "A"})
+    assert client.app.state.test_cache.get(sid) is None            # 缓存已被删
+
+    # 再读必须拿到新值；如果 PATCH 漏了 cache.delete，这里会拿到旧值 'B'
+    assert client.get(f"/students/{sid}").json()["grade"] == "A"
+
+
 def test_get_returns_cache_on_second_request(client):
     # 第一次 GET：未命中 → 查库并回填缓存
     r = client.post("/students", json={"name": "缓存命中", "age": 25, "grade": "A"})
@@ -143,7 +158,40 @@ def test_blank_grade_returns_422_not_404(client):
 
     r = client.patch(f"/students/{sid}/grade", json={"new_grade": "   "})
     assert r.status_code == 422
-    assert "成绩" in r.json()["detail"]
+    detail = r.json()["detail"]
+    assert isinstance(detail, list)                 # 已统一成字段级数组
+    assert detail[0]["loc"] == ["body", "grade"]    # 指向哪个字段
+    assert "成绩" in detail[0]["msg"]               # 人看得懂的原因
+
+
+def test_create_blank_grade_returns_422(client):
+    """创建入口也要拦空白成绩。
+
+    以前 register 只校验 age，POST grade=" " 会返回 201，空格成绩直接进库；
+    而改分时同样的值被拒。一条规则两个入口不一致 —— 这条用例守住创建端。
+    """
+    r = client.post("/students", json={"name": "空格", "age": 20, "grade": " "})
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert isinstance(detail, list)
+    assert detail[0]["loc"] == ["body", "grade"]
+
+
+def test_422_detail_shape_is_consistent(client):
+    """契约一致性：同一个 422，无论谁拦的，body 结构必须一样。
+
+    以前 Pydantic 拦的返回 detail=[{...}]，service 拦的返回 detail="...",
+    客户端得写两套解析。现在统一成数组，这条用例防止哪天又分叉。
+    """
+    pydantic_422 = client.post("/students", json={"name": "X", "age": -1, "grade": "A"})
+    sid = client.post("/students", json={"name": "X", "age": 20, "grade": "A"}).json()["id"]
+    service_422 = client.patch(f"/students/{sid}/grade", json={"new_grade": "  "})
+
+    for tag, r in (("Pydantic", pydantic_422), ("service", service_422)):
+        assert r.status_code == 422, tag
+        detail = r.json()["detail"]
+        assert isinstance(detail, list), f"{tag} 的 detail 应是数组，实际 {type(detail)}"
+        assert {"loc", "msg"} <= set(detail[0]), f"{tag} 的 detail 缺少字段：{detail[0]}"
 
 
 def test_not_found_still_returns_404(client):

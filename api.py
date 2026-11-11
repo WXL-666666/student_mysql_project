@@ -91,7 +91,16 @@ def get_cache() -> StudentCache:
 # 以前这里写死 404，导致"成绩不能为空"也被报成"学生不存在"。
 @app.exception_handler(StudentError)
 async def student_error_handler(request: Request, exc: StudentError):
-    return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
+    if exc.status_code == 422:
+        # 422 统一成"字段级错误数组"，形状和 Pydantic 的一致：
+        #   {"detail": [{"loc": ["body", "grade"], "msg": "...", "type": "EmptyGradeError"}]}
+        # 以前这里返回 {"detail": "成绩不能为空"}，导致同一个 422 有两种结构，
+        # 客户端得写两套解析逻辑。
+        loc = ["body", exc.field] if exc.field else ["body"]
+        content = {"detail": [{"loc": loc, "msg": str(exc), "type": type(exc).__name__}]}
+    else:
+        content = {"detail": str(exc)}      # 404 之类保持字符串，客户端直接展示
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 
 # ── 路由 ──────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ class StudentError(Exception):
     """
 
     status_code: int = 400
+    field: str | None = None      # 422 时指明是哪个请求字段出的问题
 
 
 class StudentNotFoundError(StudentError):
@@ -27,6 +28,7 @@ class InvalidAgeError(StudentError):
     """
 
     status_code = 422
+    field = "age"
 
     def __init__(self, age: int):
         self.age = age
@@ -37,6 +39,7 @@ class EmptyGradeError(StudentError):
     """成绩为空或只有空白 —— 输入不合法 → 422"""
 
     status_code = 422
+    field = "grade"
 
     def __init__(self):
         super().__init__("成绩不能为空")
