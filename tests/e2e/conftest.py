@@ -74,6 +74,24 @@ def live_server():
 
 @pytest.fixture
 def api(live_server):
-    """函数级：每条用例一个 client，base_url 已经填好。"""
-    with httpx.Client(base_url=live_server, timeout=10.0) as client:
+    """每条用例一个 client；用例结束后清理它创建的数据"""
+    created_ids: list[int] = []
+
+    class TrackingClient(httpx.Client):
+        """记录所有创建出来的 id，结束时统一删"""
+        def post(self, *args, **kwargs):
+            r = super().post(*args, **kwargs)
+            if r.status_code == 201 and "id" in r.json():
+                created_ids.append(r.json()["id"])
+            return r
+
+    with TrackingClient(base_url=live_server, timeout=10.0) as client:
         yield client
+
+        # 注意缩进：清理必须还在 with 里面，否则 client 已关闭，
+        # delete 会抛异常再被 except 吞掉 —— 看起来跑了，实际一条都没删。
+        for sid in created_ids:
+            try:
+                client.delete(f"/students/{sid}")
+            except Exception:
+                pass          # 已经被用例自己删掉了，忽略
