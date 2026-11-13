@@ -20,6 +20,7 @@ from service import StudentService
 from api import get_session, get_service, get_cache
 from cache import StudentCache
 
+pytestmark = pytest.mark.unit
 
 # ── 练习 1：service.py:24 batch_register 成功路径 ─────────────
 def test_batch_register_succeeds(service):

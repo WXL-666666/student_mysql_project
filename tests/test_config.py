@@ -9,6 +9,8 @@ import pytest
 
 from config import _validate_password
 
+pytestmark = pytest.mark.unit
+
 
 def test_valid_password_passes():
     """正常密码不报错（不抛异常就算过）"""

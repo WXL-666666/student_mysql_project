@@ -1,7 +1,8 @@
+import pytest
 from sqlalchemy import select
 from factories import StudentFactory
 from models import Student
-
+pytestmark = pytest.mark.integration
 
 def test_insert_and_read(db_session):
     # Arrange

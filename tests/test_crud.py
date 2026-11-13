@@ -1,7 +1,7 @@
 import pytest
 from models import Student
 from exceptions import StudentNotFoundError
-
+pytestmark = pytest.mark.integration
 
 # ---------- Create ----------
 

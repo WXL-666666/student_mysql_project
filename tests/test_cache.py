@@ -1,6 +1,10 @@
 import time
+import pytest
 
 from cache import REDIS_CONFIG, StudentCache, make_fake_client
+
+pytestmark = pytest.mark.unit
+
 
 
 def test_miss_then_set_then_hit():
@@ -14,7 +18,7 @@ def test_miss_then_set_then_hit():
     # 🔮 预测：存入后再 get → 命中，且内容一致
     assert cache.get(1) == {"id": 1, "name": "张三", "age": 18, "grade": "A"}
 
-
+@pytest.mark.slow
 def test_ttl_expiry():
     cache = StudentCache(make_fake_client())
     cache.set({"id": 2, "name": "李四", "age": 20, "grade": "B"}, ttl=1)

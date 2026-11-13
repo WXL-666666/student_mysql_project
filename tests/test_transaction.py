@@ -3,7 +3,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from models import Student
-
+pytestmark = pytest.mark.integration
 
 def count_students(session) -> int:
     return session.execute(select(func.count()).select_from(Student)).scalar()
